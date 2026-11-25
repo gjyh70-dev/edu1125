@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>국내 출장여비 계산기</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="vendor/jszip.min.js" defer></script>
+  <script src="excel-export.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="page-heading">
+      <img class="hero-image" src="디자인.png" alt="">
+      <div class="hero-copy">
+        <h1>국내 출장여비<br>계산기</h1>
+        <p>출장일과 복귀일을 입력해<br>예상 지급액을 확인하세요.</p>
+      </div>
+    </header>
+    <div class="workspace">
+      <form id="trip" class="card" novalidate>
+        <div class="card-heading">
+          <h2>출장 정보</h2>
+          <button type="button" id="example" class="quiet">예시 불러오기</button>
+        </div>
+        <fieldset class="type">
+          <legend>출장 유형</legend>
+          <div class="segmented">
+            <label><input type="radio" name="type" value="local" checked><span>근무지 내</span></label>
+            <label><input type="radio" name="type" value="remote"><span>근무지 외</span></label>
+          </div>
+          <p class="hint">일반적으로 같은 시·군·섬 안이거나 여행거리가 12km 미만이면 근무지 내 출장입니다.</p>
+        </fieldset>
+        <div class="fields">
+          <label>출장일 <input type="date" id="start" required></label>
+          <label>복귀일 <input type="date" id="end" required></label>
+        </div>
+
+        <section id="local" class="conditions" aria-label="근무지 내 출장 조건">
+          <div class="fields">
+            <label>출발 시각 <input type="time" id="depart" required></label>
+            <label>복귀 시각 <input type="time" id="arrive" required></label>
+          </div>
+          <label>차량 이용 조건
+            <select id="localVehicle">
+              <option value="none">공무용 차량 미이용</option>
+              <option value="official">공무용 차량 이용 등 감액 대상</option>
+              <option value="assigned">전용 차량 배정자</option>
+            </select>
+          </label>
+        </section>
+
+        <section id="remote" class="conditions" aria-label="근무지 외 출장 조건" hidden>
+          <div class="fields">
+            <label>여비 지급 구분
+              <select id="grade">
+                <option value="2">제2호</option>
+                <option value="1">제1호</option>
+                <option value="actual">대통령·국무총리 (일비·식비 실비)</option>
+              </select>
+            </label>
+            <label>주요 교통수단
+              <select id="transport">
+                <option value="rail">철도</option><option value="bus">버스 등 육로</option>
+                <option value="private">자가용</option><option value="air">항공</option>
+                <option value="sea">선박</option><option value="official">공용 교통수단만 이용</option>
+              </select>
+            </label>
+          </div>
+          <label>왕복 지급 대상 운임 (원)
+            <input type="number" id="fare" inputmode="numeric" min="0" step="1" placeholder="0" aria-describedby="fare-hint">
+          </label>
+          <p id="fare-hint" class="hint"></p>
+          <div id="actualCosts" class="fields" hidden>
+            <label>일비 실비 합계 (원)<input type="number" id="actualDaily" min="0" step="1" placeholder="0"></label>
+            <label>식비 실비 합계 (원)<input type="number" id="actualMeal" min="0" step="1" placeholder="0"></label>
+          </div>
+          <div class="lodging">
+            <div class="section-heading">
+              <h3>숙박 내역</h3>
+              <button type="button" id="add-night" class="quiet">숙박 추가</button>
+            </div>
+            <p id="night-hint" class="hint">지급 대상 숙박이 있으면 1박씩 추가하세요.</p>
+            <div id="nights"></div>
+          </div>
+          <details id="adjustments">
+            <summary>지급 특례 및 감액 조건</summary>
+            <div class="adjustment-fields">
+              <label>일비 절반 지급 대상 일수
+                <input type="number" id="halfDays" min="0" step="1" placeholder="0">
+              </label>
+              <p class="hint">공무용 차량 이용 등 일비 감액 대상에 해당하는 날을 입력하세요.</p>
+              <label id="meal-days-label" hidden>식비 지급 대상 일수
+                <input type="number" id="mealDays" min="0" step="1" placeholder="0">
+              </label>
+              <label class="check" id="inland-label" hidden><input type="checkbox" id="inland"> 부득이하게 육지에서 숙박한 내역이 있음</label>
+              <label class="check"><input type="checkbox" id="extra"> 승인된 숙박비 상한 초과분 적용</label>
+              <p class="hint">부득이한 사유로 추가 지급이 인정된 숙박에 한해 1박 상한을 30% 높여 계산할 수 있습니다.</p>
+              <div id="mileage-fields" hidden>
+                <label>공적 항공마일리지 추가 일비 인정액 (원)
+                  <input type="number" id="mileage" min="0" step="1" placeholder="0">
+                </label>
+                <p class="hint">절약한 항공운임 범위에서 기관 기준으로 인정된 추가 일비 총액을 입력하세요.</p>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <p id="error" class="error" role="alert" hidden></p>
+        <div class="actions">
+          <button type="submit" class="primary">여비 계산</button>
+          <button type="button" id="save-excel" class="quiet reset" disabled>엑셀로저장</button>
+          <button type="reset" class="quiet reset">초기화</button>
+        </div>
+      </form>
+
+      <section class="card results" aria-labelledby="result-title">
+        <h1 class="print-title">국내 출장여비 계산 결과</h1>
+        <div class="result-top">
+          <div class="section-heading">
+            <h2 id="result-title">예상 지급액</h2>
+            <button type="button" id="print-result" class="quiet" hidden>결과 인쇄</button>
+          </div>
+          <div id="live-result" aria-live="polite" aria-atomic="true">
+            <p id="total" class="total">—</p>
+            <p id="result-context" class="result-context">출장 정보를 입력하고 계산해 주세요.</p>
+            <p id="result-dates" class="result-context result-dates" hidden></p>
+          </div>
+        </div>
+        <dl id="breakdown" class="breakdown"></dl>
+        <p id="result-note" class="result-note" hidden></p>
+      </section>
+    </div>
+
+    <details class="sources">
+      <summary>적용 기준 및 참고 자료</summary>
+      <p>국가공무원 국내 출장 기준입니다. 기준 문서 시행일은 2026년 10월 2일입니다. 기관별 특례, 교육훈련 여비, 근거리 출장의 별도 실비 기준, 장기체재 감액 등은 소속 기관 기준으로 확인하세요. 지방자치단체 공무원은 해당 조례를 적용합니다.</p>
+      <ul>
+        <li><a href="../pdf/공무원 여비 규정(대통령령)(제36728호)(20261002).pdf">공무원 여비 규정 본문</a></li>
+        <li><a href="../pdf/%5B별표%202%5D%20국내%20여비%20지급표(제10조부터%20제13조까지%20및%20제16조제1항%20관련)(공무원%20여비%20규정).pdf">별표 2 국내 여비 지급표</a></li>
+        <li><a href="../pdf/공무원여비규정_제3항부터제5항.pdf">일비·숙박비·식비 지급 조항 발췌</a></li>
+      </ul>
+    </details>
+  </main>
+</body>
+</html>
